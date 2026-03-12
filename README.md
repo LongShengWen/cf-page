@@ -2,6 +2,16 @@
 
 基于 Vue 3 + TypeScript 的导航页，部署在 Cloudflare Workers 上。Worker 负责提供静态页面与 API，并使用 D1 数据库存储导航数据。
 
+## 一键部署到 Cloudflare
+点击下方按钮即可在 Cloudflare 上创建并部署本项目：
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/LongShengWen/cf-page)
+
+部署完成后仍需在 Cloudflare 控制台完成以下配置：
+- 绑定 D1 数据库（NAV_DB）
+- 绑定 R2 桶（ICON_BUCKET，可选）
+- 设置密钥 `ADMIN_TOKEN`
+
 ## Features
 - Vue 3 + Vite 前端
 - Worker API：`GET /api/nav`、`PUT /api/nav`

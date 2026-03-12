@@ -3,6 +3,7 @@ import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { NButton, NModal } from "naive-ui";
 
 type ViewMode = "internal" | "external";
+type ThemeMode = "aqua" | "slate" | "sand";
 
 type Settings = {
   title: string;
@@ -12,6 +13,7 @@ type Settings = {
   defaultView: ViewMode;
   cardStyle: "follow" | "detail" | "image";
   backgroundImage: string;
+  theme: ThemeMode;
 };
 
 type NavItem = {
@@ -37,6 +39,31 @@ type DragState =
   | { type: "item"; groupIndex: number; itemIndex: number }
   | null;
 
+type SunPanelExport = {
+  appName?: string;
+  icons?: SunPanelGroup[];
+};
+
+type SunPanelGroup = {
+  title?: string;
+  sort?: number;
+  children?: SunPanelItem[];
+};
+
+type SunPanelItem = {
+  title?: string;
+  url?: string;
+  lanUrl?: string;
+  description?: string;
+  sort?: number;
+  cardType?: number;
+  backgroundColor?: string;
+  icon?: {
+    src?: string;
+    backgroundColor?: string;
+  };
+};
+
 const COLOR_PRESETS = [
   "#ffffff",
   "#f8fafc",
@@ -58,17 +85,9 @@ const DEFAULT_SETTINGS: Settings = {
   defaultView: "external",
   cardStyle: "follow",
   backgroundImage: "",
+  theme: "aqua",
 };
 
-const MOCK_SETTINGS: Settings = {
-  title: "团队导航",
-  subtitle: "一站式访问常用资源",
-  announcement: "",
-  footerNote: "维护人：平台组 · 更新请联系管理员",
-  defaultView: "external",
-  cardStyle: "follow",
-  backgroundImage: "",
-};
 
 const groups = ref<NavGroup[]>([]);
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS });
@@ -79,11 +98,13 @@ const settingsTab = ref<
 const cardSettingsOpen = ref(false);
 const iconPickerOpen = ref(false);
 const iconCandidates = ref<string[]>([]);
+const iconPickerLoading = ref(false);
 const cardSettingsItem = ref<NavItem | null>(null);
 const cardSettingsGroupIndex = ref<number | null>(null);
 const cardSettingsItemIndex = ref<number | null>(null);
 const cardSettingsCreate = ref(false);
 const cardSettingsTargetGroupIndex = ref<number | null>(null);
+const importInputRef = ref<HTMLInputElement | null>(null);
 const authLoading = ref(true);
 const authToken = ref("");
 const loginForm = ref({ token: "" });
@@ -97,6 +118,7 @@ const viewMode = ref<ViewMode>("external");
 const loading = ref(true);
 const statusMessage = ref("");
 const statusType = ref<"info" | "success" | "error">("info");
+let statusTimer: number | null = null;
 const searchQuery = ref("");
 const collapsedGroups = ref<Record<string, boolean>>({});
 const dragState = ref<DragState>(null);
@@ -117,103 +139,6 @@ const SETTINGS_TABS = [
   { id: "system", label: "全局设置", desc: "保存与授权" },
 ] as const;
 
-const MOCK_DATA: NavGroup[] = [
-  {
-    id: "group_work",
-    title: "工作台",
-    items: [
-      {
-        id: "item_jira",
-        name: "Jira",
-        externalUrl: "https://jira.example.com",
-        internalUrl: "http://jira.company.local",
-        imageUrl: "https://www.google.com/s2/favicons?domain=jira.com&sz=128",
-        bgColor: "#f8fafc",
-        desc: "项目看板",
-        displayMode: "detail",
-        iconMode: "manual",
-      },
-      {
-        id: "item_wiki",
-        name: "内网 Wiki",
-        externalUrl: "",
-        internalUrl: "http://intra.company.local/wiki",
-        imageUrl: "https://www.google.com/s2/favicons?domain=wikipedia.org&sz=128",
-        bgColor: "#fef9c3",
-        desc: "知识库",
-        displayMode: "detail",
-        iconMode: "manual",
-      },
-    ],
-  },
-  {
-    id: "group_dev",
-    title: "开发",
-    items: [
-      {
-        id: "item_docs",
-        name: "API Docs",
-        externalUrl: "https://docs.example.com",
-        internalUrl: "http://docs.company.local",
-        imageUrl: "https://www.google.com/s2/favicons?domain=readme.com&sz=128",
-        bgColor: "#e0f2fe",
-        desc: "接口文档",
-        displayMode: "detail",
-        iconMode: "manual",
-      },
-      {
-        id: "item_registry",
-        name: "制品库",
-        externalUrl: "",
-        internalUrl: "http://registry.company.local",
-        imageUrl: "https://www.google.com/s2/favicons?domain=registry.npmjs.org&sz=128",
-        bgColor: "#f1f5f9",
-        desc: "内部镜像",
-        displayMode: "detail",
-        iconMode: "manual",
-      },
-      {
-        id: "item_monitor",
-        name: "监控面板",
-        externalUrl: "https://status.example.com",
-        internalUrl: "http://monitor.company.local",
-        imageUrl: "https://www.google.com/s2/favicons?domain=grafana.com&sz=128",
-        bgColor: "#ecfccb",
-        desc: "服务指标",
-        displayMode: "detail",
-        iconMode: "manual",
-      },
-    ],
-  },
-  {
-    id: "group_tools",
-    title: "效率工具",
-    items: [
-      {
-        id: "item_figma",
-        name: "Figma",
-        externalUrl: "https://figma.com",
-        internalUrl: "",
-        imageUrl: "https://www.google.com/s2/favicons?domain=figma.com&sz=128",
-        bgColor: "#ede9fe",
-        desc: "设计协作",
-        displayMode: "image",
-        iconMode: "manual",
-      },
-      {
-        id: "item_calendar",
-        name: "日历",
-        externalUrl: "https://calendar.google.com",
-        internalUrl: "",
-        imageUrl: "https://www.google.com/s2/favicons?domain=google.com&sz=128",
-        bgColor: "#e2e8f0",
-        desc: "会议安排",
-        displayMode: "detail",
-        iconMode: "manual",
-      },
-    ],
-  },
-];
 
 function makeId(prefix: string): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -227,6 +152,10 @@ function normalizeSettings(data: unknown): Settings {
   const defaultView = raw.defaultView === "internal" ? "internal" : "external";
   const cardStyle =
     raw.cardStyle === "detail" || raw.cardStyle === "image" ? raw.cardStyle : "follow";
+  const theme =
+    raw.theme === "slate" || raw.theme === "sand" || raw.theme === "aqua"
+      ? raw.theme
+      : DEFAULT_SETTINGS.theme;
   return {
     title: typeof raw.title === "string" ? raw.title : DEFAULT_SETTINGS.title,
     subtitle: typeof raw.subtitle === "string" ? raw.subtitle : DEFAULT_SETTINGS.subtitle,
@@ -236,7 +165,123 @@ function normalizeSettings(data: unknown): Settings {
     cardStyle,
     backgroundImage:
       typeof raw.backgroundImage === "string" ? raw.backgroundImage : DEFAULT_SETTINGS.backgroundImage,
+    theme,
   };
+}
+
+function normalizeDedupeKey(item: NavItem): string {
+  const ext = item.externalUrl.trim().toLowerCase();
+  const internal = item.internalUrl.trim().toLowerCase();
+  const urlKey = ext || internal;
+  if (urlKey) {
+    return `url:${urlKey}`;
+  }
+  return `name:${item.name.trim().toLowerCase()}`;
+}
+
+function dedupeGroups(data: NavGroup[]): NavGroup[] {
+  const seen = new Set<string>();
+  return data.map((group) => {
+    const items: NavItem[] = [];
+    for (const item of group.items) {
+      const key = normalizeDedupeKey(item);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      items.push(item);
+    }
+    return { ...group, items };
+  });
+}
+
+function countItems(data: NavGroup[]): number {
+  return data.reduce((sum, group) => sum + group.items.length, 0);
+}
+
+function isSunPanelExport(data: unknown): data is SunPanelExport {
+  if (!data || typeof data !== "object") {
+    return false;
+  }
+  const raw = data as Record<string, unknown>;
+  return raw.appName === "Sun-Panel-Config" && Array.isArray(raw.icons);
+}
+
+function guessSunPanelOrigin(data: SunPanelExport): string {
+  const groups = Array.isArray(data.icons) ? data.icons : [];
+  for (const group of groups) {
+    const children = Array.isArray(group.children) ? group.children : [];
+    for (const item of children) {
+      const url = typeof item.url === "string" ? item.url : "";
+      const lanUrl = typeof item.lanUrl === "string" ? item.lanUrl : "";
+      const candidate = url || lanUrl;
+      if (!candidate) {
+        continue;
+      }
+      try {
+        const parsed = new URL(candidate);
+        if (parsed.hostname.includes("panel")) {
+          return parsed.origin;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return "";
+}
+
+function resolveSunPanelIconSrc(src: string, origin: string): string {
+  const trimmed = src.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("/") && origin) {
+    return `${origin}${trimmed}`;
+  }
+  return trimmed;
+}
+
+function normalizeSunPanelExport(data: SunPanelExport): NavGroup[] {
+  const origin = guessSunPanelOrigin(data);
+  const groups = Array.isArray(data.icons) ? data.icons : [];
+  return groups
+    .slice()
+    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+    .map((group) => {
+      const title = typeof group.title === "string" ? group.title : "未命名分组";
+      const children = Array.isArray(group.children) ? group.children : [];
+      const items = children
+        .slice()
+        .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+        .map((child) => {
+          const iconSrcRaw = typeof child.icon?.src === "string" ? child.icon.src : "";
+          const iconSrc = resolveSunPanelIconSrc(iconSrcRaw, origin);
+          const bgColor =
+            (typeof child.backgroundColor === "string" && child.backgroundColor) ||
+            (typeof child.icon?.backgroundColor === "string" && child.icon.backgroundColor) ||
+            "";
+          return {
+            id: makeId("item"),
+            name: typeof child.title === "string" ? child.title : "未命名卡片",
+            externalUrl: typeof child.url === "string" ? child.url : "",
+            internalUrl: typeof child.lanUrl === "string" ? child.lanUrl : "",
+            imageUrl: iconSrc,
+            bgColor,
+            desc: typeof child.description === "string" ? child.description : "",
+            displayMode: "detail",
+            iconMode: iconSrc ? "manual" : "auto",
+          } satisfies NavItem;
+        });
+      return {
+        id: makeId("group"),
+        title,
+        items,
+      } satisfies NavGroup;
+    });
 }
 
 function normalizeGroups(data: unknown): NavGroup[] {
@@ -354,11 +399,19 @@ const visibleGroups = computed(() => {
 });
 
 function linkInfo(item: NavItem): { url: string; label: string; disabled: boolean } {
-  const url = viewMode.value === "internal" ? item.internalUrl : item.externalUrl;
-  if (url.trim().length > 0) {
+  const preferred = viewMode.value === "internal" ? item.internalUrl : item.externalUrl;
+  const fallback = viewMode.value === "internal" ? item.externalUrl : item.internalUrl;
+  if (preferred.trim().length > 0) {
     return {
-      url,
+      url: preferred,
       label: viewMode.value === "internal" ? "内网" : "外网",
+      disabled: false,
+    };
+  }
+  if (fallback.trim().length > 0) {
+    return {
+      url: fallback,
+      label: viewMode.value === "internal" ? "外网" : "内网",
       disabled: false,
     };
   }
@@ -437,39 +490,109 @@ function buildIconCandidates(rawUrl: string): string[] {
     return [];
   }
   const candidates = new Set<string>();
-  const direct = imageUrlFromLink(trimmed);
-  if (direct) {
-    candidates.add(direct);
-  }
   const origin = normalizeOrigin(trimmed);
   if (origin) {
     candidates.add(`${origin}/favicon.ico`);
     candidates.add(`${origin}/favicon.png`);
     candidates.add(`${origin}/favicon.svg`);
     candidates.add(`${origin}/apple-touch-icon.png`);
+    candidates.add(`${origin}/apple-touch-icon-precomposed.png`);
+  }
+  const direct = imageUrlFromLink(trimmed);
+  if (direct) {
+    candidates.add(direct);
   }
   const hostname = normalizeHostname(trimmed);
   if (hostname) {
-    candidates.add(`https://www.google.com/s2/favicons?domain=${hostname}&sz=64`);
+    // Fallback providers: keep a small set and filter by probe.
     candidates.add(`https://www.google.com/s2/favicons?domain=${hostname}&sz=128`);
-    candidates.add(`https://www.google.com/s2/favicons?domain=${hostname}&sz=256`);
+    candidates.add(`https://icons.duckduckgo.com/ip3/${hostname}.ico`);
     candidates.add(`https://icon.horse/icon/${hostname}`);
-    candidates.add(`https://www.duckduckgo.com/ip3/${hostname}.ico`);
+    candidates.add(`https://favicon.yandex.net/favicon/${hostname}`);
   }
   return Array.from(candidates);
 }
 
-function openIconPicker(rawUrl: string): void {
+let iconPickerSeq = 0;
+
+async function probeIcon(url: string): Promise<boolean> {
+  return await new Promise((resolve) => {
+    const img = new Image();
+    const timer = window.setTimeout(() => {
+      resolve(false);
+    }, 2500);
+    const done = (ok: boolean): void => {
+      window.clearTimeout(timer);
+      resolve(ok);
+    };
+    img.onload = () => {
+      const width = img.naturalWidth || 0;
+      const height = img.naturalHeight || 0;
+      done(width >= 16 && height >= 16);
+    };
+    img.onerror = () => done(false);
+    img.src = url;
+  });
+}
+
+async function resolveValidIconCandidates(candidates: string[]): Promise<string[]> {
+  if (candidates.length === 0) {
+    return [];
+  }
+  const checks = await Promise.all(
+    candidates.map(async (url) => ({
+      url,
+      ok: await probeIcon(url),
+    })),
+  );
+  return checks.filter((item) => item.ok).map((item) => item.url);
+}
+
+async function fetchDeepIconCandidates(rawUrl: string): Promise<string[]> {
+  const headers: Record<string, string> = {};
+  if (authToken.value.trim()) {
+    headers.Authorization = `Bearer ${authToken.value.trim()}`;
+  }
+  try {
+    const res = await fetch(`/api/icon-candidates?url=${encodeURIComponent(rawUrl)}`, {
+      headers,
+    });
+    if (!res.ok) {
+      return [];
+    }
+    const data = (await res.json()) as { candidates?: unknown };
+    const list = Array.isArray(data.candidates) ? data.candidates : [];
+    return list.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function openIconPicker(rawUrl: string): Promise<void> {
   if (!cardSettingsItem.value) {
     return;
   }
-  const candidates = buildIconCandidates(rawUrl);
-  if (candidates.length === 0) {
+  const rawCandidates = buildIconCandidates(rawUrl);
+  if (rawCandidates.length === 0) {
     setStatus("无法获取图标，请检查地址。", "error");
     return;
   }
-  iconCandidates.value = candidates;
+  const seq = (iconPickerSeq += 1);
   iconPickerOpen.value = true;
+  iconPickerLoading.value = true;
+  iconCandidates.value = [];
+  const deepCandidates = await fetchDeepIconCandidates(rawUrl);
+  const mergedCandidates = Array.from(new Set([...deepCandidates, ...rawCandidates]));
+  const candidates = await resolveValidIconCandidates(mergedCandidates.slice(0, 24));
+  if (seq !== iconPickerSeq) {
+    return;
+  }
+  iconPickerLoading.value = false;
+  if (candidates.length === 0) {
+    setStatus("未找到可用图标，请手动填写图片 URL。", "error");
+    return;
+  }
+  iconCandidates.value = candidates.slice(0, 12);
 }
 
 function chooseIcon(url: string): void {
@@ -530,6 +653,18 @@ function safeColorValue(color: string): string {
 function setStatus(message: string, type: "info" | "success" | "error" = "info"): void {
   statusMessage.value = message;
   statusType.value = type;
+  if (statusTimer) {
+    window.clearTimeout(statusTimer);
+    statusTimer = null;
+  }
+  if (!message) {
+    return;
+  }
+  const timeout = type === "error" ? 5000 : 3200;
+  statusTimer = window.setTimeout(() => {
+    statusMessage.value = "";
+    statusTimer = null;
+  }, timeout);
 }
 
 async function verifyAuth(token: string): Promise<boolean> {
@@ -758,6 +893,17 @@ watch(authToken, (token) => {
   }
 });
 
+watch(
+  () => settings.value.theme,
+  (theme) => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.documentElement.dataset.theme = theme;
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
   closeContextMenu();
 });
@@ -840,33 +986,92 @@ async function loadNav(): Promise<void> {
       normalizedSettings = normalizeSettings(payload.settings);
     }
 
+    groups.value = normalizedGroups;
+    applySettings(normalizedSettings);
     if (normalizedGroups.length === 0) {
-      groups.value = cloneGroups(MOCK_DATA);
-      applySettings(MOCK_SETTINGS);
-      setStatus("API 返回空数据，已载入模拟数据。", "info");
-    } else {
-      groups.value = normalizedGroups;
-      applySettings(normalizedSettings);
+      setStatus("API 返回空数据。", "info");
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    groups.value = cloneGroups(MOCK_DATA);
-    applySettings(MOCK_SETTINGS);
-    setStatus(`API 读取失败：${message}（已载入模拟数据）`, "error");
+    groups.value = [];
+    applySettings(DEFAULT_SETTINGS);
+    setStatus(`API 读取失败：${message}`, "error");
   } finally {
     loading.value = false;
   }
 }
 
-function useMockData(): void {
-  groups.value = cloneGroups(MOCK_DATA);
-  applySettings(MOCK_SETTINGS);
-  setStatus("已载入模拟数据。", "success");
-}
-
 function resetSettings(): void {
   applySettings(DEFAULT_SETTINGS);
   setStatus("已恢复默认设置。", "success");
+}
+
+function exportNavData(): void {
+  const payload = {
+    settings: settings.value,
+    groups: groups.value,
+  };
+  const content = JSON.stringify(payload, null, 2);
+  const blob = new Blob([content], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const date = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `nav-export-${date}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  setStatus("已导出配置。", "success");
+}
+
+function triggerImport(): void {
+  importInputRef.value?.click();
+}
+
+async function handleImportChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) {
+    return;
+  }
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text) as unknown;
+    let normalizedGroups: NavGroup[] = [];
+    let normalizedSettings = { ...settings.value };
+    if (Array.isArray(data)) {
+      normalizedGroups = normalizeGroups(data);
+    } else if (data && typeof data === "object") {
+      if (isSunPanelExport(data)) {
+        normalizedGroups = normalizeSunPanelExport(data);
+      } else {
+        const payload = data as { settings?: unknown; groups?: unknown };
+        normalizedGroups = normalizeGroups(payload.groups ?? []);
+        if (payload.settings) {
+          normalizedSettings = normalizeSettings(payload.settings);
+        }
+      }
+    } else {
+      throw new Error("格式无效");
+    }
+    const beforeCount = countItems(normalizedGroups);
+    const dedupedGroups = dedupeGroups(normalizedGroups);
+    const afterCount = countItems(dedupedGroups);
+    const removedCount = beforeCount - afterCount;
+    groups.value = dedupedGroups;
+    applySettings(normalizedSettings);
+    const suffix = removedCount > 0 ? `，已过滤 ${removedCount} 项重复数据` : "";
+    if (isAdmin.value) {
+      setStatus(`已导入配置${suffix}，正在保存...`, "info");
+      await saveNav();
+    } else {
+      setStatus(`已导入配置${suffix}，请保存设置。`, "success");
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    setStatus(`导入失败：${message}`, "error");
+  } finally {
+    input.value = "";
+  }
 }
 
 function addGroup(): void {
@@ -1319,6 +1524,12 @@ onMounted(() => {
       </button>
     </div>
 
+    <transition name="toast">
+      <div v-if="statusMessage" class="toast" :data-type="statusType">
+        {{ statusMessage }}
+      </div>
+    </transition>
+
     <section v-if="loading" class="state">加载中...</section>
 
     <section v-else class="groups">
@@ -1508,6 +1719,14 @@ onMounted(() => {
                     <option value="image">图片模式</option>
                   </select>
                 </label>
+                <label class="field">
+                  <span>主题风格</span>
+                  <select v-model="settings.theme" class="input select">
+                    <option value="aqua">薄荷青</option>
+                    <option value="slate">冰川蓝</option>
+                    <option value="sand">暖沙色</option>
+                  </select>
+                </label>
                 <label class="field span-2">
                   <span>背景图片 URL</span>
                   <input v-model="settings.backgroundImage" class="input" placeholder="https://..." />
@@ -1608,6 +1827,15 @@ onMounted(() => {
           <div class="settings-footer">
             <div class="settings-footer-actions">
               <template v-if="isAdmin">
+                <input
+                  ref="importInputRef"
+                  type="file"
+                  accept="application/json"
+                  class="sr-only"
+                  @change="handleImportChange"
+                />
+                <n-button tertiary @click="exportNavData">导出</n-button>
+                <n-button tertiary @click="triggerImport">导入</n-button>
                 <n-button tertiary @click="resetSettings">恢复默认设置</n-button>
                 <n-button type="primary" @click="saveNav">保存设置</n-button>
               </template>
@@ -1792,7 +2020,11 @@ onMounted(() => {
       :close-on-esc="true"
       :style="{ width: 'min(420px, 92vw)' }"
     >
-      <div class="icon-picker-grid">
+      <div v-if="iconPickerLoading" class="icon-picker-empty">正在检测可用图标...</div>
+      <div v-else-if="iconCandidates.length === 0" class="icon-picker-empty">
+        未找到可用图标，请手动填写图片 URL。
+      </div>
+      <div v-else class="icon-picker-grid">
         <button
           v-for="icon in iconCandidates"
           :key="icon"

@@ -44,6 +44,124 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
+function resolveUrl(base: string, href: string): string | null {
+  try {
+    return new URL(href, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractHref(tag: string, attr: string): string | null {
+  const match = new RegExp(`${attr}\\s*=\\s*["']([^"']+)["']`, "i").exec(tag);
+  return match?.[1] ?? null;
+}
+
+function isIconRel(rel: string): boolean {
+  const lower = rel.toLowerCase();
+  return (
+    lower.includes("icon") ||
+    lower.includes("apple-touch-icon") ||
+    lower.includes("mask-icon") ||
+    lower.includes("shortcut")
+  );
+}
+
+async function fetchManifestIcons(manifestUrl: string): Promise<string[]> {
+  try {
+    const res = await fetch(manifestUrl, { redirect: "follow" });
+    if (!res.ok) {
+      return [];
+    }
+    const json = (await res.json()) as { icons?: Array<{ src?: string }> };
+    const icons = Array.isArray(json.icons) ? json.icons : [];
+    return icons
+      .map((icon) => (typeof icon.src === "string" ? icon.src : ""))
+      .filter((src) => src);
+  } catch {
+    return [];
+  }
+}
+
+async function collectIconCandidatesFromUrl(targetUrl: string): Promise<string[]> {
+  const base = targetUrl;
+  const candidates = new Set<string>();
+
+  candidates.add(new URL("/favicon.ico", base).toString());
+  candidates.add(new URL("/apple-touch-icon.png", base).toString());
+  candidates.add(new URL("/apple-touch-icon-precomposed.png", base).toString());
+
+  const res = await fetch(targetUrl, { redirect: "follow" });
+  if (!res.ok) {
+    return Array.from(candidates);
+  }
+
+  const html = await res.text();
+
+  const linkTagRegex = /<link[^>]+>/gi;
+  const metaTagRegex = /<meta[^>]+>/gi;
+  const links = html.match(linkTagRegex) ?? [];
+  const metas = html.match(metaTagRegex) ?? [];
+
+  const manifestUrls: string[] = [];
+  for (const tag of links) {
+    const rel = extractHref(tag, "rel");
+    const href = extractHref(tag, "href");
+    if (!href) {
+      continue;
+    }
+    if (rel && rel.toLowerCase().includes("manifest")) {
+      const resolved = resolveUrl(base, href);
+      if (resolved) {
+        manifestUrls.push(resolved);
+      }
+      continue;
+    }
+    if (rel && isIconRel(rel)) {
+      const resolved = resolveUrl(base, href);
+      if (resolved) {
+        candidates.add(resolved);
+      }
+    }
+  }
+
+  for (const tag of metas) {
+    const property = extractHref(tag, "property");
+    const content = extractHref(tag, "content");
+    if (property && property.toLowerCase() === "og:image" && content) {
+      const resolved = resolveUrl(base, content);
+      if (resolved) {
+        candidates.add(resolved);
+      }
+    }
+  }
+
+  for (const manifestUrl of manifestUrls) {
+    const icons = await fetchManifestIcons(manifestUrl);
+    for (const icon of icons) {
+      const resolved = resolveUrl(manifestUrl, icon);
+      if (resolved) {
+        candidates.add(resolved);
+      }
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+async function handleIconCandidates(request: Request, env: Env): Promise<Response> {
+  if (!isAdminToken(request, env)) {
+    return textResponse("Unauthorized", 401);
+  }
+  const url = new URL(request.url);
+  const target = url.searchParams.get("url") ?? "";
+  if (!isHttpUrl(target)) {
+    return textResponse("Invalid url", 400);
+  }
+  const candidates = await collectIconCandidatesFromUrl(target);
+  return jsonBody({ candidates });
+}
+
 function contentTypeToExt(contentType: string): string {
   const type = contentType.split(";")[0]?.trim().toLowerCase();
   switch (type) {
@@ -307,6 +425,13 @@ export default {
       }
       if (request.method === "PUT") {
         return handlePut(request, env);
+      }
+      return textResponse("Method Not Allowed", 405);
+    }
+
+    if (url.pathname === "/api/icon-candidates") {
+      if (request.method === "GET") {
+        return handleIconCandidates(request, env);
       }
       return textResponse("Method Not Allowed", 405);
     }
