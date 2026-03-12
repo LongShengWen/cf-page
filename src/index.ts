@@ -20,7 +20,7 @@ async function ensureNavTable(env: Env): Promise<void> {
 const DEFAULT_SEED = {
   settings: {
     title: "导航页",
-    subtitle: "",
+    subtitle: "点击右上角设置开始配置",
     announcement: "",
     footerNote: "",
     defaultView: "external",
@@ -28,12 +28,30 @@ const DEFAULT_SEED = {
     backgroundImage: "",
     theme: "aqua",
   },
-  groups: [],
+  groups: [
+    {
+      id: "group_start",
+      title: "开始使用",
+      items: [
+        {
+          id: "item_repo",
+          name: "项目仓库",
+          externalUrl: "https://github.com/LongShengWen/cf-page",
+          internalUrl: "",
+          imageUrl: "",
+          bgColor: "",
+          desc: "点击进入仓库说明",
+          displayMode: "detail",
+          iconMode: "auto",
+        },
+      ],
+    },
+  ],
 };
 
-function normalizeSeedPayload(payload: unknown): unknown {
+function normalizeSeedPayload(payload: unknown): unknown | null {
   if (Array.isArray(payload)) {
-    return { ...DEFAULT_SEED, groups: payload };
+    return { settings: DEFAULT_SEED.settings, groups: payload };
   }
   if (payload && typeof payload === "object") {
     const raw = payload as { settings?: unknown; groups?: unknown };
@@ -47,7 +65,11 @@ function normalizeSeedPayload(payload: unknown): unknown {
       };
     }
   }
-  return DEFAULT_SEED;
+  return null;
+}
+
+function isAuthEnabled(env: Env): boolean {
+  return typeof env.ADMIN_TOKEN === "string" && env.ADMIN_TOKEN.trim().length > 0;
 }
 
 async function seedNavIfEmpty(env: Env): Promise<void> {
@@ -60,7 +82,7 @@ async function seedNavIfEmpty(env: Env): Promise<void> {
   let seedPayload: unknown = DEFAULT_SEED;
   if (env.SEED_DATA) {
     try {
-      seedPayload = normalizeSeedPayload(JSON.parse(env.SEED_DATA));
+      seedPayload = normalizeSeedPayload(JSON.parse(env.SEED_DATA)) ?? DEFAULT_SEED;
     } catch {
       seedPayload = DEFAULT_SEED;
     }
@@ -330,6 +352,9 @@ async function storeImageFromDataUrl(value: string, env: Env): Promise<string | 
 }
 
 function isAdminToken(request: Request, env: Env): boolean {
+  if (!isAuthEnabled(env)) {
+    return true;
+  }
   const auth = request.headers.get("authorization") ?? request.headers.get("x-admin-token");
   if (!auth) {
     return false;
@@ -447,6 +472,9 @@ async function handlePut(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleLogin(request: Request, env: Env): Promise<Response> {
+  if (!isAuthEnabled(env)) {
+    return jsonBody({ ok: true, authRequired: false }, 200);
+  }
   let payload: unknown;
   try {
     payload = await request.json();
@@ -465,6 +493,9 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleMe(request: Request, env: Env): Promise<Response> {
+  if (!isAuthEnabled(env)) {
+    return jsonBody({ ok: true, authRequired: false }, 200);
+  }
   if (!isAdminToken(request, env)) {
     return textResponse("Unauthorized", 401);
   }

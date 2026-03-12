@@ -13,8 +13,10 @@
 - 绑定 D1 数据库（NAV_DB）
 - 绑定 R2 桶（ICON_BUCKET，可选）
 - 设置密钥 `ADMIN_TOKEN`
-- 可选：设置变量 `SEED_DATA`（JSON 字符串），用于首次初始化数据
-  例如：
+快速启动模式：若未设置 `ADMIN_TOKEN`，系统将以“开放模式”运行（无需登录即可读写）。
+此时首次访问会自动写入默认初始化数据，方便快速跑起来。
+可选：设置变量 `SEED_DATA`（JSON 字符串），用于首次初始化数据（会覆盖默认初始化）。
+例如：
   ```json
   {"settings":{"title":"团队导航","subtitle":"","announcement":"","footerNote":"","defaultView":"external","cardStyle":"follow","backgroundImage":"","theme":"aqua"},"groups":[]}
   ```

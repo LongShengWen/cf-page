@@ -681,11 +681,32 @@ async function verifyAuth(token: string): Promise<boolean> {
   }
 }
 
+async function verifyOpenMode(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/me");
+    if (!res.ok) {
+      return false;
+    }
+    const data = (await res.json()) as { authRequired?: boolean };
+    return data.authRequired === false;
+  } catch {
+    return false;
+  }
+}
+
 async function fetchAuthState(): Promise<void> {
   authLoading.value = true;
   try {
     const stored = typeof window !== "undefined" ? localStorage.getItem("auth_token") ?? "" : "";
     if (!stored) {
+      const openMode = await verifyOpenMode();
+      if (openMode) {
+        authToken.value = "open";
+        if (typeof window !== "undefined") {
+          localStorage.setItem("auth_token", "open");
+        }
+        return;
+      }
       authToken.value = "";
       return;
     }
