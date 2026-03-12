@@ -7,10 +7,17 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/LongShengWen/cf-page)
 
+说明：一键部署会以当前仓库作为“种子仓库”，并在你的 GitHub 账户下创建一个新仓库（名称通常是 `home-cf`），Cloudflare 之后会绑定这个新仓库进行构建部署。如果你希望直接使用原仓库 `cf-page`，请在 Cloudflare 控制台手动连接该仓库与分支。
+
 部署完成后仍需在 Cloudflare 控制台完成以下配置：
 - 绑定 D1 数据库（NAV_DB）
 - 绑定 R2 桶（ICON_BUCKET，可选）
 - 设置密钥 `ADMIN_TOKEN`
+- 可选：设置变量 `SEED_DATA`（JSON 字符串），用于首次初始化数据
+  例如：
+  ```json
+  {"settings":{"title":"团队导航","subtitle":"","announcement":"","footerNote":"","defaultView":"external","cardStyle":"follow","backgroundImage":"","theme":"aqua"},"groups":[]}
+  ```
 
 ## Features
 - Vue 3 + Vite 前端

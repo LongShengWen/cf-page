@@ -3,6 +3,75 @@ export interface Env {
   ADMIN_TOKEN: string;
   ASSETS: Fetcher;
   ICON_BUCKET: R2Bucket;
+  SEED_DATA?: string;
+}
+
+let navTableReady: Promise<void> | null = null;
+
+async function ensureNavTable(env: Env): Promise<void> {
+  if (!navTableReady) {
+    navTableReady = env.NAV_DB.exec(
+      "CREATE TABLE IF NOT EXISTS nav (id INTEGER PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL)",
+    ).then(() => undefined);
+  }
+  await navTableReady;
+}
+
+const DEFAULT_SEED = {
+  settings: {
+    title: "导航页",
+    subtitle: "",
+    announcement: "",
+    footerNote: "",
+    defaultView: "external",
+    cardStyle: "follow",
+    backgroundImage: "",
+    theme: "aqua",
+  },
+  groups: [],
+};
+
+function normalizeSeedPayload(payload: unknown): unknown {
+  if (Array.isArray(payload)) {
+    return { ...DEFAULT_SEED, groups: payload };
+  }
+  if (payload && typeof payload === "object") {
+    const raw = payload as { settings?: unknown; groups?: unknown };
+    if (Array.isArray(raw.groups)) {
+      return {
+        settings:
+          raw.settings && typeof raw.settings === "object"
+            ? raw.settings
+            : DEFAULT_SEED.settings,
+        groups: raw.groups,
+      };
+    }
+  }
+  return DEFAULT_SEED;
+}
+
+async function seedNavIfEmpty(env: Env): Promise<void> {
+  await ensureNavTable(env);
+  const row = await env.NAV_DB.prepare("SELECT data FROM nav WHERE id = 1")
+    .first<{ data: string }>();
+  if (row?.data) {
+    return;
+  }
+  let seedPayload: unknown = DEFAULT_SEED;
+  if (env.SEED_DATA) {
+    try {
+      seedPayload = normalizeSeedPayload(JSON.parse(env.SEED_DATA));
+    } catch {
+      seedPayload = DEFAULT_SEED;
+    }
+  }
+  const now = new Date().toISOString();
+  await env.NAV_DB.prepare(
+    "INSERT INTO nav (id, data, updated_at) VALUES (1, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+  )
+    .bind(JSON.stringify(seedPayload), now)
+    .run();
 }
 
 function jsonResponse(body: string, status = 200): Response {
@@ -273,6 +342,11 @@ async function handleGet(request: Request, env: Env): Promise<Response> {
   if (!isAdminToken(request, env)) {
     return textResponse("Unauthorized", 401);
   }
+  try {
+    await seedNavIfEmpty(env);
+  } catch {
+    return textResponse("DB init failed", 500);
+  }
   const row = await env.NAV_DB.prepare("SELECT data FROM nav WHERE id = 1")
     .first<{ data: string }>();
   return jsonResponse(row?.data ?? "[]");
@@ -281,6 +355,11 @@ async function handleGet(request: Request, env: Env): Promise<Response> {
 async function handlePut(request: Request, env: Env): Promise<Response> {
   if (!isAdminToken(request, env)) {
     return textResponse("Unauthorized", 401);
+  }
+  try {
+    await seedNavIfEmpty(env);
+  } catch {
+    return textResponse("DB init failed", 500);
   }
 
   const text = await request.text();
