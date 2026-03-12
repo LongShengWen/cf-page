@@ -1,0 +1,18 @@
+{
+  "name": "home_cf",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "deploy": "npm --prefix web run build && wrangler deploy",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy",
+    "lint": "npm --prefix web run lint",
+    "format": "npm --prefix web run format"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "wrangler": "^4.72.0"
+  }
+}

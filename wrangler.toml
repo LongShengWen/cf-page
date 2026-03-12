@@ -1,0 +1,25 @@
+name = "home-cf"
+main = "src/index.ts"
+compatibility_date = "2026-03-11"
+
+[assets]
+directory = "./web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+# D1 binding for navigation data
+[[d1_databases]]
+binding = "NAV_DB"
+database_name = "nav_db"
+database_id = "REPLACE_WITH_D1_ID"
+preview_database_id = "REPLACE_WITH_PREVIEW_ID"
+migrations_dir = "migrations"
+
+# R2 bucket for icons
+[[r2_buckets]]
+binding = "ICON_BUCKET"
+bucket_name = "nav-icons"
+preview_bucket_name = "nav-icons-preview"
+
+# Set admin token via: wrangler secret put ADMIN_TOKEN
